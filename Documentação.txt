@@ -1,0 +1,420 @@
+PROJETO ACADÊMICO — SISTEMA PARA DISTRIBUIDORA DE PRODUTOS DE PANIFICAÇÃO
+DOCUMENTAÇÃO FUNCIONAL E TÉCNICA — VERSÃO INICIAL CONSOLIDADA
+Data de consolidação: 23/10/2026
+
+1. OBJETIVO E ESCOPO
+
+Desenvolver um sistema acadêmico integrado para uma distribuidora de produtos
+destinados a panificadoras. A solução terá uma Web administrativa, uma API, um
+banco central MySQL e um aplicativo Android para vendedores externos.
+
+O vendedor percorre sua carteira de clientes em uma ordem definida pela loja,
+registra pedidos no Mobile, reúne os pedidos em um PedidoGeral e envia o lote.
+O administrador confere o estoque, ajusta os cortes e confirma as vendas.
+O sistema registra contas a receber e simula os recebimentos.
+
+Prioridades: simplicidade acadêmica, regras de negócio corretas, persistência,
+segurança básica, funcionamento offline dos rascunhos e integração entre
+Mobile, API, Web e MySQL. Não haverá integração financeira real.
+
+2. TECNOLOGIAS E ARQUITETURA
+
+- Mobile Android: C# e .NET MAUI; SQLite para catálogo sincronizado, carteira,
+  rota, histórico necessário e rascunhos locais.
+- API: C# e ASP.NET Core Web API; centraliza autenticação, validações, cálculos,
+  transações e acesso ao MySQL.
+- Web administrativa: ASP.NET Core MVC; consome a API, sem acessar diretamente
+  o MySQL para contornar as regras de negócio.
+- Banco central: MySQL, com chaves, restrições, relacionamentos e transações.
+- Desenvolvimento: VS Code para API e Web; Visual Studio quando necessário
+  para compilar, executar e depurar o aplicativo .NET MAUI Android.
+- Versionamento: Git e repositório público no GitHub, sem senhas ou segredos.
+- Teste final do aplicativo: aparelho Android físico do aluno.
+
+Fluxo lógico: Web <-> API <-> MySQL; Mobile <-> API; Mobile <-> SQLite.
+O SQLite não substitui o MySQL: guarda cópias e trabalho offline do vendedor.
+
+3. PERFIS E PERMISSÕES
+
+3.1. Administrador (Web)
+- Faz login com conta previamente cadastrada; não existe cadastro público.
+- Gerencia vendedores, clientes e suas carteiras/rotas, estados, cidades,
+  categorias, produtos, estoque e formas de pagamento.
+- Consulta PedidoGeral, pedidos, visitas puladas, cortes, vendas, recebíveis e condições de pagamento.
+- Recebe lotes, revisa cortes sugeridos e confirma ou cancela lotes pendentes.
+- Registra manualmente o recebimento integral de parcelas.
+- Filtra produtos pela proximidade do vencimento e identifica os vencidos.
+
+3.2. Vendedor (Mobile)
+- Faz login com credenciais cadastradas pelo administrador.
+- Sincroniza sua carteira, sequência de visitas, catálogo e histórico.
+- Percorre clientes obrigatoriamente na ordem da rota; registra pedido ou pula
+  a visita, indicando um motivo.
+- Cadastra novo cliente quando há conexão e aguarda confirmação da API.
+- Monta, pausa e retoma PedidosGerais em rascunho no SQLite.
+- Consulta e altera pedidos ainda não enviados; acompanha resultado dos cortes.
+- Envia um PedidoGeral somente após concluir a rota correspondente.
+
+3.3. Cliente
+- Não possui login nesta versão; é cadastrado pelo administrador ou vendedor.
+- Pertence à carteira de um vendedor responsável.
+- Não existe limite de crédito nem bloqueio de compra por inadimplência.
+
+4. CARTEIRA, ROTEIRO E CICLOS DE VISITA
+
+4.1. Cada cliente possui um identificador interno no banco e um CodigoVisita
+     exclusivo na carteira de seu vendedor (ex.: 10, 15, 20, 30). O código de
+     visita NÃO precisa ser a chave primária do MySQL.
+4.2. O administrador define a OrdemVisita; a ordem e o código são atributos
+     distintos, permitindo reordenar a rota sem trocar a identidade do cliente.
+4.3. O vendedor não pode iniciar um pedido para um cliente fora da sequência.
+     Pode pesquisar e consultar histórico, mas o atendimento avança pela rota.
+4.4. Em cada visita, o vendedor deve registrar um pedido ou selecionar
+     "Pular cliente", com motivo obrigatório: "Não fará pedido",
+     "Local fechado", "Indisponível" ou "Outro" (com observação).
+4.5. Uma visita pulada é concluída sem pedido e não pode ser retomada no mesmo
+     ciclo; o cliente poderá ser atendido em um novo ciclo.
+4.6. Cada PedidoGeral corresponde a um ciclo completo da rota. O aplicativo
+     guarda a sequência daquele ciclo para que alterações futuras na carteira
+     não modifiquem o roteiro já iniciado.
+4.7. Vários rascunhos podem permanecer no SQLite, mas apenas um fica ativo para
+     atendimento de cada vez; outros podem estar pausados.
+4.8. Cada rascunho mantém o progresso das Visitas (ordem, cliente, situação,
+     motivo de pulo) e a referência ProximoClienteId, derivável desse progresso.
+     Salvar apenas ProximoClienteId não é suficiente para preservar o histórico.
+4.9. Ao concluir ou pular todos os clientes, o lote fica ProntoParaEnvio.
+     A rota não é reiniciada pelo simples ato de pausar, retomar ou transmitir.
+4.10. Após concluir um ciclo, é possível iniciar outro desde o primeiro cliente,
+      inclusive no mesmo dia; portanto, podem existir vários envios diários.
+4.11. Um ciclo sem pedidos (todos os clientes pulados) é encerrado localmente
+      como EncerradoSemPedidos; não será transmitido lote vazio.
+4.12. Alterações de rota devem ser programadas pelo administrador com antecedência mínima de 24 horas. 
+      A nova sequência entrará em vigor no primeiro ciclo iniciado após esse prazo. 
+      Ciclos já iniciados, inclusive os pausados, preservam sua sequência original até o encerramento.
+
+5. FLUXO INTEGRADO DO PEDIDO
+
+5.1. Mobile — montagem e envio
+01. Vendedor faz login; a API valida a conta ativa e a carteira permitida.
+02. Mobile sincroniza dados alterados; pode reutilizar catálogo e clientes do
+    SQLite sem baixar todos os registros a cada abertura.
+03. Vendedor cria ou retoma um PedidoGeral local e atende o próximo cliente.
+04. Pode consultar histórico do cliente, repetir itens de pedido anterior ou
+    criar novo carrinho. Somente o cliente da visita atual pode ser atendido.
+05. Adiciona produtos por categoria e vê preço informativo.
+06. Seleciona condição de pagamento e forma de pagamento de cada parcela; vê
+    valores PREVISTOS, sujeitos aos cortes e às datas reais de pagamento.
+07. O botão "Acrescentar Pedido à Lista" grava no SQLite; não envia e não
+    reserva/baixa estoque. A visita passa a ter situação PedidoRegistrado.
+08. Pode optar por "Pular cliente" em vez de criar pedido; registra o motivo.
+09. Avança na ordem, salva progresso e pode pausar/retomar posteriormente.
+10. Antes do envio, pode revisar, editar ou remover os pedidos registrados,
+    preservando a rastreabilidade da visita correspondente.
+11. Remoção de pedido transforma a visita em Pulado, exigindo um motivo.
+12. Ao concluir todas as visitas, habilita "Enviar pedidos para a loja" somente
+    se existir pelo menos um pedido e houver conexão.
+13. Mobile transmite identificador único, roteiro/visitas, pedidos, itens e
+    pagamentos previstos à API. Em falha, mantém os dados locais intactos.
+14. Quando a API confirma recebimento, Mobile marca o lote Enviado, preserva
+    histórico e possibilita criar outro ciclo.
+
+5.2. API — recebimento
+15. API autentica vendedor, valida seus clientes, rota concluída, itens,
+    produtos, condições e preços atuais; nunca confia somente no Mobile.
+16. Diferença entre preço local e preço oficial causa rejeição para atualização
+    e revisão pelo vendedor, sem alteração silenciosa do total.
+17. Valida o PedidoGeral por inteiro e grava lote, visitas, pedidos, itens e
+    previsões de parcelas no MySQL em uma única transação.
+18. Se qualquer item falhar, nada desse lote é gravado; erros identificam
+    cliente e item. Receber lote não gera venda nem baixa/reserva estoque.
+
+5.3. Web — análise e corte
+19. Web lista lotes Recebidos por vendedor, data e situação; mostra pedidos e
+    visitas puladas. Administrador abre um PedidoGeral específico.
+20. Web apresenta uma sugestão AUTOMÁTICA de distribuição do estoque entre
+    clientes; o administrador pode editar manualmente cada quantidade atendida.
+21. Após revisão, mostra cortes por cliente/produto, total final e parcelas.
+22. Ao confirmar, a API confere estoque e validade atuais, valida todas as
+    quantidades e conclui o lote em transação indivisível.
+23. Se estoque, validade ou distribuição mudaram e a proposta não cabe mais,
+    a API exige revisão; não confirma silenciosamente uma distribuição diferente.
+24. A confirmação gera vendas e contas a receber somente para pedidos com
+    atendimento positivo e baixa exatamente o estoque atendido.
+25. Em vez de confirmar, o administrador pode cancelar um lote Recebido,
+    informando motivo; esse cancelamento não movimenta o estoque.
+
+5.4. Pós-confirmação
+26. Mobile sincroniza por lote e cliente: solicitado, atendido, cortado,
+    valores definitivos, parcelas e situação.
+27. Web acompanha parcelas em aberto, pagas, vencidas ou antecipadas; recebe
+    pagamentos de forma simulada, com lançamento manual pelo administrador.
+
+6. CORTE HÍBRIDO DE ESTOQUE
+
+6.1. Para cada produto, a API soma as quantidades solicitadas por todos os
+     clientes do PedidoGeral. O corte é feito por produto, não por pedido.
+6.2. Um produto vencido na data da confirmação é inelegível para atendimento;
+     sua quantidade disponível para aquele corte será zero.
+6.3. Se a quantidade disponível atende a todos, a sugestão atende integralmente.
+6.4. Se a quantidade é insuficiente, o sistema propõe rateio proporcional:
+     calcula quota = saldo * quantidade_solicitada / total_solicitado;
+     atribui a parte inteira a cada cliente e distribui unidades restantes
+     pelas maiores partes fracionárias; desempata pela OrdemVisita.
+6.5. O administrador pode aumentar ou diminuir cada quantidade sugerida,
+     inclusive zerá-la. Regras obrigatórias no instante da confirmação:
+     0 <= AtendidaCliente <= SolicitadaCliente;
+     soma(AtendidaClientePorProduto) <= estoque disponível e válido.
+6.6. Exemplo: A, B e C solicitam 5, 8 e 9 unidades de X; só existem 15.
+     Sugestão proporcional: A=3, B=6, C=6. A loja pode alterar para
+     A=4, B=5, C=6; ambas totalizam 15 e são válidas.
+6.7. O Mobile preserva as quantidades solicitadas; QuantidadeCortada =
+     QuantidadeSolicitada - QuantidadeAtendida.
+6.8. Pedidos totalmente cortados ficam NaoAtendido, sem venda ou recebíveis.
+     Pedido com algum item atendido gera uma única venda, mesmo parcial.
+6.9. Estoque só é baixado na confirmação; confirmar duas vezes não causa baixa
+     duplicada. Confirmações concorrentes não podem consumir o mesmo saldo.
+
+7. PRODUTOS PERECÍVEIS
+
+7.1. Cada registro de Produto terá uma DataValidade e um saldo de estoque
+     inteiro não negativo. NÃO haverá controle de múltiplos lotes por produto.
+7.2. Essa simplificação pressupõe estoque com uma única validade por registro;
+     entradas com validades distintas precisam ser tratadas separadamente no
+     cadastro, pois o sistema não rastreará unidades por lote.
+7.3. A API impede a confirmação de venda de produtos cuja DataValidade seja
+     anterior à data corrente de confirmação; produtos com validade no dia
+     podem ser tratados como válidos até o fim desse dia.
+7.4. A Web terá filtro e ordenação por DataValidade, incluindo "Próximos do
+     vencimento" e "Vencidos". A faixa de dias do filtro poderá ser escolhida
+     na interface (ex.: até 7, 15 ou 30 dias).
+7.5. O Mobile pode exibir dados desatualizados; a confirmação pela API é a
+     autoridade para impedir atendimento de produto vencido.
+
+8. CONDIÇÕES E FORMAS DE PAGAMENTO
+
+8.1. Condições fixas, permanentes e sempre disponíveis (dias corridos desde a confirmação da venda):
+     - À vista: 1 parcela com vencimento no próprio dia, desconto fixo de 18%
+       aplicado ao valor FINAL atendido do pedido.
+     - 7/14: 2 parcelas com vencimentos em D+7 e D+14.
+     - 7/14/21: 3 parcelas com vencimentos em D+7, D+14 e D+21.
+8.2. Cada pedido tem uma condição; cada parcela tem sua forma de pagamento
+     escolhida separadamente: Pix, boleto, dinheiro, crédito ou débito.
+8.3. Não existe pagamento real nem integração com banco, Pix ou adquirentes.
+     O administrador registra manualmente o recebimento INTEGRAL de cada
+     parcela pela Web; não há pagamento parcial nem renegociação.
+8.4. O pagamento à vista não é marcado automaticamente como recebido: o
+     desconto é calculado e a conta fica aguardando registro pelo administrador.
+8.5. O corte define o valor final da venda. Após o desconto fixo à vista,
+     quando aplicável, divide-se o saldo igualmente entre as parcelas em
+     centavos; a última absorve diferenças de arredondamento.
+8.6. Exemplo sem desconto: R$ 100,00 em 3 parcelas gera R$ 33,33 + R$ 33,33
+     + R$ 33,34. Para pagamento à vista de R$ 100,00, a parcela base será
+     R$ 82,00 devido ao desconto fixo de 18%.
+
+8.7. Encargos/descontos de cada parcela (somente no registro do pagamento):
+     Base = valor da parcela efetivamente gerada após a confirmação.
+     Dias = diferença em dias corridos entre vencimento e data do recebimento.
+     a) Se pagamento no vencimento: ValorPago = Base.
+     b) Se antecipado em N dias: ValorPago = Base * (1 - 0,01 * N).
+     c) Se atrasado N dias: ValorPago = Base + (Base * 0,05) +
+        (Base * 0,02 * N). Juros SIMPLES de 2% ao dia e multa única de 5%.
+     A multa é cobrada uma única vez por parcela vencida, jamais a cada dia.
+8.8. Na condição à vista, aplica-se o desconto fixo de 18%; a regra de
+     antecipação de 1% ao dia não é cumulativa com ele. Se a parcela à vista
+     permanecer aberta após o vencimento, os encargos incidem sobre sua Base
+     já descontada, conforme a regra geral de atraso.
+8.9. Pagamento antecipado só poderá ocorrer após a confirmação da venda.
+     Assim, nas condições iniciais, antecipar a parcela de D+21 no próprio
+     dia da confirmação permite, no máximo, 21 dias de antecipação.
+8.10. A Web deve exibir Base, vencimento, data de recebimento, dias, multa,
+      juros/desconto e ValorPago calculados pela API para conferência do ADM
+      antes de registrar o recebimento.
+8.11. Somente o registro manual altera a situação da parcela para Paga e
+      preserva seu valor efetivamente recebido. Sem registro, ela segue Aberta
+      ou Vencida de acordo com o vencimento.
+8.12. Arredondar valores monetários para duas casas decimais, com regra de
+      arredondamento consistente na API. A ausência de limite de crédito
+      significa que inadimplência não bloqueia novos pedidos.
+
+9. ENTIDADES E RELACIONAMENTOS CONCEITUAIS
+
+- Usuario: Id, Nome, Login/Email, SenhaHash, Perfil, Ativo.
+- Estado, Cidade: localidades usadas nos cadastros.
+- Cliente: Id interno, VendedorId, CodigoVisita, OrdemVisita, dados cadastrais,
+  endereço, Ativo. Cada cliente tem exatamente um vendedor responsável.
+- Categoria: Id, Nome, Ativo.
+- Produto: Id, CategoriaId, Nome, Descricao, Preco, Estoque, DataValidade, Ativo.
+- CondicaoPagamento: Id, Nome, QuantidadeParcelas, PrazosDias, DescontoAVista.
+- FormaPagamento: Id, Nome, Ativo.
+- PedidoGeral: Id local/servidor, IdentificadorEnvio unico, VendedorId,
+  DataCriacao, DataEnvio, Situacao, ProximoClienteId (estado local).
+- Visita: Id, PedidoGeralId, ClienteId, OrdemSnapshot, Situacao,
+  MotivoPulo, Observacao. Pedido ou pulo encerra a visita.
+- Pedido: Id, PedidoGeralId, ClienteId, CondicaoPagamentoId, Situacao,
+  TotalPrevisto, TotalFinal, VisitaId. No máximo um pedido por cliente no mesmo lote.
+- ItemPedido: Id, PedidoId, ProdutoId, NomeProdutoSnapshot, PrecoUnitarioSnapshot,
+  QuantidadeSolicitada, QuantidadeAtendida.
+- ParcelaPedido: Id, PedidoId, Numero, PrazoDias, FormaPagamentoId,
+  ValorPrevisto (sem data definitiva de vencimento antes da confirmação).
+- Venda: Id, PedidoId, DataConfirmacao, TotalFinal. Uma venda por pedido com
+  pelo menos um item atendido.
+- ItemVenda: Id, VendaId, ProdutoId, Quantidade, PrecoUnitario.
+- ContaReceber: Id, VendaId, NumeroParcela, FormaPagamentoId, Vencimento,
+  ValorBase, Situacao, DataRecebimento, Multa, Juros, DescontoAntecipacao,
+  ValorRecebido, ParcelaPedidoId. A condição escolhida permanece rastreável via Pedido.
+
+Vendedor 1:N Cliente; Vendedor 1:N PedidoGeral; PedidoGeral 1:N Visita;
+PedidoGeral 1:N Pedido; Cliente 1:N Pedido; Pedido 1:N ItemPedido;
+Pedido 1:N ParcelaPedido; Pedido 0..1:1 Venda; Venda 1:N ItemVenda;
+Venda 1:N ContaReceber; ItemPedido N:1 Produto.
+
+10. SITUAÇÕES E TRANSIÇÕES
+
+10.1. PedidoGeral local (SQLite):
+      EmAndamento <-> Pausado -> ProntoParaEnvio -> Enviando -> Enviado.
+      Falha de envio volta a ProntoParaEnvio ou mantém verificação de envio
+      pendente, sem apagar o lote. Ciclo vazio vira EncerradoSemPedidos.
+10.2. PedidoGeral no MySQL: Recebido -> Confirmado OU Cancelado.
+      O Mobile sincroniza o resultado, sem substituir rascunhos diferentes.
+10.3. Visita: Pendente → PedidoRegistrado ou Pulado. 
+      A remoção de um pedido antes do envio transforma PedidoRegistrado → Pulado, exigindo motivo obrigatório. 
+      Uma visita pulada não poderá gerar outro pedido no mesmo ciclo.
+10.4. Pedido: Recebido -> AtendidoTotal, AtendidoParcial ou NaoAtendido;
+      também poderá ser Cancelado por cancelamento integral do lote.
+10.5. ContaReceber: Aberta -> Paga por confirmação manual; atraso poderá ser
+      exibido como Vencida enquanto Aberta, segundo a data corrente.
+10.6. O vendedor não altera um lote após a confirmação de recebimento na API.
+      Só lotes Recebidos podem ser confirmados ou cancelados pela loja.
+
+11. REQUISITOS FUNCIONAIS (RF)
+
+RF01. Login com papéis Administrador (Web) e Vendedor (Mobile).
+RF02. CRUD e desativação administrativa de vendedores, clientes, localidades,
+      categorias, produtos e formas de pagamento.
+RF03. Gestão da carteira e da OrdemVisita/CodigoVisita pela Web.
+RF04. Cadastro de cliente no Mobile mediante conexão e confirmação pela API.
+RF05. Sincronização de clientes, rota, produtos, condições e histórico no Mobile.
+RF06. Exibição do próximo cliente, avanço sequencial e pulo com motivo.
+RF07. Criação de vários rascunhos persistidos, com apenas um atendimento ativo.
+RF08. Consulta ao histórico e repetição de itens de pedido anterior.
+RF09. Carrinho com produtos ativos, categorias, quantidade e total previsto.
+RF10. Seleção de condição e forma de pagamento por parcela, com prévia.
+RF11. Inclusão, edição e remoção de pedidos locais antes do envio.
+RF12. Resumo do PedidoGeral com visitas, pedidos, total previsto e pendências.
+RF13. Envio apenas de lote não vazio, após completar a rota e com conexão.
+RF14. Validação integral, transacional e idempotente do lote pela API.
+RF15. Consulta administrativa de lotes e pedidos por vendedor e situação.
+RF16. Sugestão proporcional de corte e edição manual pela Web.
+RF17. Validação do corte, validade e saldo na confirmação, com revisão em caso
+      de divergência entre prévia e confirmação.
+RF18. Geração transacional de venda, itens atendidos, baixa de estoque e contas
+      a receber; opção de cancelar lote pendente com motivo.
+RF19. Consulta de vendas e histórico de cortes por cliente e vendedor.
+RF20. Registro manual do recebimento integral com cálculo de multa, juros ou
+      desconto de antecipação no momento da operação.
+RF21. Contas a receber por cliente, vencimento e situação; novos pedidos não
+      são bloqueados por inadimplência.
+RF22. Gestão do estoque e consulta/filtro de produtos próximos da validade ou
+      vencidos; proibição de venda de produtos vencidos.
+RF23. Sincronização para o Mobile de cortes, vendas, parcelas e cancelamentos.
+RF24. Mensagens de lista vazia, ausência de dados, rota incompleta, conexão
+      indisponível, divergência de preços, envio, confirmação e erros.
+
+12. REQUISITOS NÃO FUNCIONAIS (RNF)
+
+RNF01. SQLite mantém rascunhos por vendedor e dados já sincronizados sem
+       conexão contínua; sair da conta não apaga rascunhos, nem os revela a
+       outro vendedor.
+RNF02. Login, cadastro de novo cliente, envio e confirmação dependem da API.
+RNF03. API impõe autenticação/autorização por perfil e vínculo da carteira.
+RNF04. Senhas são armazenadas como hash seguro com sal e algoritmo apropriado
+       (ex.: PasswordHasher do ASP.NET Core), nunca como texto puro ou hash
+       rápido simples; segredos e credenciais ficam fora do GitHub.
+RNF05. Comunicação de uso real usa HTTPS; a configuração de rede para o Android
+       físico deverá ser feita de maneira explícita no ambiente de testes.
+RNF06. MySQL garante chaves e integridade; operações de recebimento e
+       confirmação são transacionais e resistentes a duplicação/concorrência.
+RNF07. A API define os cálculos financeiros em decimal, com duas casas nos
+       valores persistidos; datas de vencimento em dias corridos, com referência
+       temporal consistente entre Mobile, API, Web e banco.
+RNF08. Erros de conexão não encerram o aplicativo nem apagam rascunhos;
+       reenvios recuperam resultados sem duplicar lotes, vendas ou baixas.
+RNF09. Telas distinguem valor previsto, atendido, base da parcela e valor pago.
+RNF10. Projeto deverá compilar e ser testado por componentes; testes integrados
+       ao final incluem um aparelho Android físico.
+
+13. REGRAS GERAIS E INTEGRIDADE
+
+RG01. Cada vendedor só pode acessar seus clientes, visitas e lotes; toda
+      autorização deve ser verificada na API.
+RG02. Um cliente pode ter apenas um pedido por PedidoGeral; cada produto aparece
+      uma vez por pedido (somar quantidades quando incluído novamente).
+RG03. Não permitir itens de quantidade menor ou igual a zero, pedido vazio,
+      pagamento incompleto nem envio de lote sem pedidos.
+RG04. A API é autoridade para preço; após recebimento, preserva nome, preço
+      e condição registrados historicamente, mesmo após alterações cadastrais.
+RG05. Cada envio tem identificador estável gerado pelo Mobile. A API reconhece
+      repetição do mesmo conteúdo e rejeita reutilização do ID para outro lote.
+      Quando a API rejeitar definitivamente um envio por inconsistência de dados, o vendedor poderá corrigir o rascunho. 
+      Após a correção, um novo identificador de envio deverá ser gerado. 
+      Falhas de comunicação não geram automaticamente um novo identificador; nesses casos, 
+      o Mobile consultará a situação do envio anterior antes de retransmitir.
+RG06. Se a resposta do envio se perder, o Mobile deve consultar seu estado pelo
+      identificador antes de permitir edição/retransmissão inconsistente.
+RG07. O cadastro de cliente é operação separada do envio: sucesso no cadastro
+      não é revertido se o lote posteriormente falhar.
+RG08. A confirmação de lote e a baixa são atômicas; evitar confirmação dupla e
+      consumo concorrente do mesmo saldo; estoque nunca pode ficar negativo.
+RG09. Histórico não é apagado por desativação de usuário, cliente, produto,
+      ou forma de pagamento. As três Condições são permanentes e não mudam seus prazos ou descontos.
+RG10. Parcelas e vendas preservam valores realmente confirmados, a condição,
+      as formas selecionadas e os dados do recebimento efetivo.
+RG11. Não existem pagamento parcial, limite de crédito, conta própria do
+      cliente, liquidação bancária real ou integração com serviços externos.
+
+14. TELAS SUGERIDAS (MÍNIMAS)
+
+Mobile: Login; Meus PedidosGerais (novo/retomar); Próximo Cliente/Carteira;
+Dados e Histórico do Cliente; Catálogo; Carrinho/Pagamento; Resumo do Lote;
+Resultado e Histórico de Pedidos; Cadastro de Cliente.
+
+Web: Login; Painel; Vendedores e Carteiras/Rotas; Clientes; Localidades;
+Categorias; Produtos/Estoque/Validades; Consulta de Condições de Pagamneto e Gestão de Formas de Pagamento;
+PedidosGerais (prévia e corte); Vendas; Contas a Receber/Registro de Pagamento.
+
+15. PREMISSAS DE SIMPLIFICAÇÃO E FORA DO ESCOPO
+
+- Produto possui uma única data de validade por registro, sem rastreio de lotes.
+- Métodos de pagamento são simulados e registrados manualmente pela loja.
+- Não há pagamento parcial, devolução, renegociação, limite de crédito,
+  agendamento de entrega, rastreamento de transporte ou portal de clientes.
+- Não existe cadastro público de administrador ou integração com provedores
+  externos de pagamento.
+- Não executar migrações ou alterações de código até a modelagem ser aprovada.
+- Os nomes finais de classes, endpoints e tabelas serão escolhidos na etapa
+  de implementação, preservando estas regras de negócio.
+
+16. CRITÉRIOS DE ACEITAÇÃO (CENÁRIOS ESSENCIAIS)
+
+CA01. Vendedor fecha o app no meio da rota e retoma exatamente no próximo
+      cliente, com pedidos e motivos de pulo preservados no SQLite.
+CA02. Tentativa de atender fora da sequência é bloqueada; vários ciclos podem
+      ocorrer no mesmo dia, mas cada PedidoGeral exige rota concluída.
+CA03. Envio sem conexão preserva o rascunho; reenvio com mesmo identificador
+      não duplica lote.
+CA04. ADM altera sugestão de 3/6/6 para 4/5/6 no exemplo de 15 unidades;
+      a API aceita; distribuição acima do saldo é rejeitada.
+CA05. Produto vencido não gera ItemVenda nem baixa para aquele pedido; filtro
+      Web permite identificar produtos próximos da validade.
+CA06. Pedido totalmente cortado não gera Venda nem ContaReceber; pedido parcial
+      gera valores e parcelas apenas sobre o atendimento final.
+CA07. Pedido à vista de R$ 100,00 gera parcela base R$ 82,00, inicialmente
+      Aberta, até confirmação manual do recebimento.
+CA08. Parcela base de R$ 100,00 paga dois dias depois do vencimento resulta
+      em R$ 109,00 (R$ 5,00 de multa + R$ 4,00 de juros simples).
+CA09. Parcela base de R$ 100,00 antecipada quatro dias é recebida por R$ 96,00.
+CA10. Cliente com parcelas vencidas pode continuar fazendo novos pedidos.
+CA11. Falha durante confirmação não deixa baixa, venda ou conta parcial;
+      confirmar novamente uma venda já confirmada não duplica nada.
+CA12. Aplicativo é executado e testado no Android pessoal, sincronizando com
+      API, Web e MySQL no ambiente acadêmico.

@@ -1,0 +1,36 @@
+# Compilacao .NET
+**/bin/
+**/obj/
+
+# Visual Studio e VS Code
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Testes e logs
+TestResults/
+*.log
+
+# Credenciais e configuracoes locais
+.env
+.env.*
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/secrets.json
+*.pfx
+*.pem
+*.key
+*.keystore
+*.jks
+
+# Bancos locais
+*.sqlite
+*.sqlite3
+*.db
+
+# Arquivos temporarios
+*.tmp
+.DS_Store
+Thumbs.db
