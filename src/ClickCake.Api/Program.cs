@@ -14,6 +14,7 @@ builder.Services.AddControllers();
 // Banco e servicos
 builder.Services.AddScoped<UsuarioRepositorio>();
 builder.Services.AddScoped<AdminInicializador>();
+builder.Services.AddScoped<Banco>();
 
 // Senhas
 builder.Services.AddSingleton<
