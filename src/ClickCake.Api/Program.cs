@@ -119,7 +119,18 @@ if (app.Environment.IsDevelopment())
     await inicializador.ExecutarAsync();
 }
 
-app.UseHttpsRedirection();
+// Porta HTTP usada somente no computador local, via cabo USB (adb reverse).
+// As demais requisicoes, inclusive as da Web, continuam usando HTTPS.
+if (app.Environment.IsDevelopment())
+{
+    app.UseWhen(
+        contexto => contexto.Connection.LocalPort != 5101,
+        ramo => ramo.UseHttpsRedirection());
+}
+else
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthentication();
 app.UseAuthorization();
