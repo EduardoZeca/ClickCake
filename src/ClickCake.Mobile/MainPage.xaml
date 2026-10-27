@@ -7,6 +7,16 @@
              x:DataType="local:MainPage"
              Title="ClickCake"
              BackgroundColor="#F8FAFC">
+    <ContentPage.Resources>
+        <Style TargetType="Picker">
+            <Setter Property="BackgroundColor" Value="#E2E8F0" />
+            <Setter Property="TitleColor" Value="#334155" />
+            <Setter Property="TextColor" Value="#0F172A" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="HeightRequest" Value="54" />
+            <Setter Property="Margin" Value="0,4" />
+        </Style>
+    </ContentPage.Resources>
     <ScrollView>
         <VerticalStackLayout Padding="18,24" Spacing="16">
             <Label Text="ClickCake" FontSize="29" FontAttributes="Bold" TextColor="#1E293B" />
@@ -35,6 +45,61 @@
                             BackgroundColor="#475569" TextColor="White" />
                 </HorizontalStackLayout>
                 <Label x:Name="MensagemSincronizacao" FontSize="13" TextColor="#334155" />
+
+                <Border Padding="12" BackgroundColor="White" Stroke="#94A3B8" StrokeThickness="1">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="PedidosGerais e visitas" FontSize="20" FontAttributes="Bold" TextColor="#1E293B" />
+                        <Button Text="Iniciar novo ciclo" Clicked="AoNovoCiclo"
+                                BackgroundColor="#047857" TextColor="White" />
+                        <Label Text="Rascunhos deste vendedor" FontAttributes="Bold" TextColor="#334155" />
+                        <VerticalStackLayout x:Name="ListaCiclos" Spacing="8" />
+                        <Label x:Name="MensagemCiclos" TextColor="#334155" FontSize="13" />
+
+                        <VerticalStackLayout x:Name="AreaCiclo" IsVisible="False" Spacing="10">
+                            <Label x:Name="CicloSelecionado" FontSize="17" FontAttributes="Bold" TextColor="#1E293B" />
+                            <HorizontalStackLayout Spacing="8">
+                                <Button x:Name="BotaoPausarCiclo" Text="Pausar ciclo" Clicked="AoPausarCiclo"
+                                        BackgroundColor="#475569" TextColor="White" />
+                                <Button x:Name="BotaoEnviarLote" Text="Enviar lote" Clicked="AoEnviarLote"
+                                        BackgroundColor="#1D4ED8" TextColor="White" />
+                            </HorizontalStackLayout>
+                            <Label x:Name="MensagemCicloAtual" TextColor="#334155" FontSize="13" />
+
+                            <VerticalStackLayout x:Name="AreaAtendimento" IsVisible="False" Spacing="9">
+                                <Label x:Name="ProximaVisita" FontAttributes="Bold" FontSize="17" TextColor="#1E293B" />
+                                <Picker x:Name="EscolhaCategoria" Title="Categoria" TextColor="Black"
+                                        SelectedIndexChanged="AoEscolherCategoria" />
+                                <Picker x:Name="EscolhaProduto" Title="Produto do catalogo" TextColor="Black" />
+                                <Entry x:Name="EntradaQuantidade" Placeholder="Quantidade" Keyboard="Numeric" TextColor="Black" />
+                                <Button Text="Adicionar item ao carrinho" Clicked="AoAdicionarItem"
+                                        BackgroundColor="#0F766E" TextColor="White" />
+                                <VerticalStackLayout x:Name="ListaCarrinho" Spacing="5" />
+                                <Picker x:Name="EscolhaCondicao" Title="Condicao de pagamento" TextColor="Black"
+                                        SelectedIndexChanged="AoEscolherCondicao" />
+                                <VerticalStackLayout x:Name="FormasParcelas" Spacing="7" />
+                                <Label x:Name="TotalCarrinho" TextColor="#1E293B" FontAttributes="Bold" />
+                                <Button x:Name="BotaoSalvarPedido" Text="Acrescentar pedido a lista" Clicked="AoSalvarPedido"
+                                        BackgroundColor="#047857" TextColor="White" />
+                                <Button x:Name="BotaoPularVisita" Text="Pular proximo cliente" Clicked="AoPularVisita"
+                                        BackgroundColor="#B45309" TextColor="White" />
+                            </VerticalStackLayout>
+
+                            <Label Text="Motivo para pular/remover pedido:" TextColor="#334155" />
+                            <Picker x:Name="EscolhaMotivo" Title="Motivo de pulo" TextColor="Black">
+                                <Picker.Items>
+                                    <x:String>Nao fara pedido</x:String>
+                                    <x:String>Local fechado</x:String>
+                                    <x:String>Indisponivel</x:String>
+                                    <x:String>Outro</x:String>
+                                </Picker.Items>
+                            </Picker>
+                            <Entry x:Name="EntradaObservacao" Placeholder="Observacao (obrigatoria para Outro)"
+                                   MaxLength="500" TextColor="Black" />
+                            <Label Text="Resumo do ciclo" FontSize="17" FontAttributes="Bold" TextColor="#1E293B" />
+                            <VerticalStackLayout x:Name="ListaResumo" Spacing="6" />
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
 
                 <Border Padding="12" BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1">
                     <VerticalStackLayout Spacing="8">

@@ -5,7 +5,7 @@ using SQLite;
 
 namespace ClickCake.Mobile.Data;
 
-public sealed class DadosLocais
+public sealed partial class DadosLocais
 {
     private readonly SQLiteAsyncConnection _banco;
 
@@ -25,6 +25,11 @@ public sealed class DadosLocais
         await _banco.CreateTableAsync<CondicaoLocal>();
         await _banco.CreateTableAsync<FormaLocal>();
         await _banco.CreateTableAsync<ConfiguracaoLocal>();
+        await _banco.CreateTableAsync<PedidoGeralRascunho>();
+        await _banco.CreateTableAsync<VisitaRascunho>();
+        await _banco.CreateTableAsync<PedidoRascunho>();
+        await _banco.CreateTableAsync<ItemPedidoRascunho>();
+        await _banco.CreateTableAsync<ParcelaRascunho>();
     }
 
     public async Task SalvarSincronizacaoAsync(SincronizacaoResposta dados)

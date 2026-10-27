@@ -97,6 +97,8 @@ public partial class MainPage : ContentPage
         AreaDados.IsVisible = true;
         UsuarioLogado.Text = $"Vendedor: {_nome}";
         await ExibirCacheAsync();
+        await AtualizarCatalogosPedidoAsync();
+        await AtualizarListaCiclosAsync();
     }
 
     private async Task ExibirCacheAsync()
@@ -127,6 +129,9 @@ public partial class MainPage : ContentPage
             var resposta = await _api.SincronizarAsync(_token);
             await _dadosLocais.SalvarSincronizacaoAsync(resposta);
             await ExibirCacheAsync();
+            await AtualizarCatalogosPedidoAsync();
+            await AtualizarListaCiclosAsync();
+            if (_cicloAtualId != null) await ExibirCicloAsync();
             MensagemSincronizacao.Text = "Sincronizacao concluida. Dados atualizados no SQLite.";
         }
         catch (SessaoExpiradaException)
@@ -158,6 +163,11 @@ public partial class MainPage : ContentPage
         Clientes.Clear();
         Produtos.Clear();
         Condicoes.Clear();
+        _cicloAtualId = null;
+        _visitaEdicaoId = null;
+        _carrinho.Clear();
+        ListaCiclos.Children.Clear();
+        AreaCiclo.IsVisible = false;
         AreaDados.IsVisible = false;
         AreaLogin.IsVisible = true;
         MensagemLogin.Text = "";

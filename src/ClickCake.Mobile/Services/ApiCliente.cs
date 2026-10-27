@@ -44,9 +44,51 @@ public sealed class ApiCliente
         return await resposta.Content.ReadFromJsonAsync<SincronizacaoResposta>(Json)
             ?? throw new InvalidOperationException("Resposta de sincronizacao vazia.");
     }
+
+    public async Task<ResultadoEnvio?> ConsultarEnvioAsync(string token, Guid identificador)
+    {
+        using var requisicao = Autenticada(HttpMethod.Get,
+            $"api/mobile/pedidosgerais/{identificador}", token);
+        using var resposta = await _http.SendAsync(requisicao);
+        if (resposta.StatusCode == HttpStatusCode.NotFound) return null;
+        if (resposta.StatusCode == HttpStatusCode.Unauthorized) throw new SessaoExpiradaException();
+        resposta.EnsureSuccessStatusCode();
+        return await resposta.Content.ReadFromJsonAsync<ResultadoEnvio>(Json)
+            ?? throw new InvalidOperationException("Resposta de consulta vazia.");
+    }
+
+    public async Task<ResultadoEnvio> EnviarPedidoGeralAsync(string token, PedidoGeralEnvio envio)
+    {
+        using var requisicao = Autenticada(HttpMethod.Post, "api/mobile/pedidosgerais", token);
+        requisicao.Content = JsonContent.Create(envio, options: Json);
+        using var resposta = await _http.SendAsync(requisicao);
+        if (resposta.StatusCode == HttpStatusCode.Unauthorized) throw new SessaoExpiradaException();
+        if (resposta.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict)
+        {
+            var erro = await resposta.Content.ReadFromJsonAsync<ErroEnvio>(Json);
+            throw new RejeicaoEnvioException(erro?.Mensagem ?? "Lote rejeitado pela API.");
+        }
+        resposta.EnsureSuccessStatusCode();
+        return await resposta.Content.ReadFromJsonAsync<ResultadoEnvio>(Json)
+            ?? throw new InvalidOperationException("Resposta de envio vazia.");
+    }
+
+    private static HttpRequestMessage Autenticada(HttpMethod metodo, string url, string token)
+    {
+        var requisicao = new HttpRequestMessage(metodo, url);
+        requisicao.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return requisicao;
+    }
+
+    private sealed class ErroEnvio
+    {
+        public string Mensagem { get; set; } = "";
+    }
 }
 
 public class SessaoExpiradaException : Exception
 {
     public SessaoExpiradaException() : base("Sessao expirada. Entre novamente.") { }
 }
+
+public sealed class RejeicaoEnvioException(string mensagem) : Exception(mensagem);
