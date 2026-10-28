@@ -6,7 +6,7 @@ using ClickCake.Mobile.Models;
 
 namespace ClickCake.Mobile.Services;
 
-public sealed class ApiCliente
+public sealed partial class ApiCliente
 {
     // Teste Android fisico por USB: adb reverse tcp:5101 tcp:5101.
     // Nao e um endereco de producao nem deve ser exposto pela internet.

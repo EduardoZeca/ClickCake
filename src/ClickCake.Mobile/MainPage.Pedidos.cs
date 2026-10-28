@@ -105,6 +105,7 @@ public partial class MainPage
         if (pendente != null)
             ProximaVisita.Text = $"Proximo: {pendente.OrdemVisita}. {pendente.ClienteNome} " +
                 $"(codigo {pendente.CodigoVisita})";
+        await AtualizarHistoricoClienteAsync(pendente?.ClienteId);
 
         ListaResumo.Children.Clear();
         decimal valorGeral = 0;
@@ -169,6 +170,7 @@ public partial class MainPage
         AreaAtendimento.IsVisible = true;
         BotaoPularVisita.IsVisible = false;
         ProximaVisita.Text = $"Editando pedido de {visita.ClienteNome}";
+        await AtualizarHistoricoClienteAsync(visita.ClienteId);
         EscolhaCondicao.SelectedItem = _catalogoCondicoes
             .FirstOrDefault(c => c.Id == pedido.CondicaoPagamentoId);
         for (var i = 0; i < pedido.Parcelas.Count && i < _pickersFormas.Count; i++)
@@ -289,6 +291,7 @@ public partial class MainPage
                     ItemsSource = _catalogoFormas,
                     ItemDisplayBinding = new Binding(nameof(FormaLocal.Nome))
                 };
+                EstilizarSeletor(picker);
                 _pickersFormas.Add(picker);
                 FormasParcelas.Children.Add(picker);
             }

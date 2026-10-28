@@ -1,0 +1,381 @@
+@{
+    ViewData["Title"] = "PedidosGerais e cortes";
+}
+
+<h1 class="h3">PedidosGerais e cortes</h1>
+<p class="text-secondary">Revise os lotes recebidos antes de confirmar vendas e baixar estoque.</p>
+@Html.AntiForgeryToken()
+
+<div id="aviso" class="alert d-none" role="alert"></div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-3">
+                <label class="form-label" for="situacao">Situacao</label>
+                <select class="form-select" id="situacao">
+                    <option value="">Todas</option>
+                    <option value="Recebido" selected>Recebido</option>
+                    <option value="Confirmado">Confirmado</option>
+                    <option value="Cancelado">Cancelado</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="vendedor">Vendedor</label>
+                <select class="form-select" id="vendedor">
+                    <option value="">Todos</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="inicio">Enviado a partir de</label>
+                <input class="form-control" type="date" id="inicio" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="fim">Enviado ate</label>
+                <input class="form-control" type="date" id="fim" />
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-primary w-100" type="button" id="filtrar">Filtrar lotes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex gap-2 mb-3">
+    <button type="button" id="mostrarLotes" class="btn btn-outline-primary">Consultar lotes</button>
+    <button type="button" id="mostrarVendas" class="btn btn-outline-secondary">Historico de vendas</button>
+</div>
+
+<section id="secaoLotes">
+    <div class="table-responsive">
+        <table class="table table-striped table-sm align-middle" id="tabelaLotes"></table>
+    </div>
+    <div id="detalhe" class="card my-3 d-none">
+        <div class="card-body">
+            <h2 id="tituloDetalhe" class="h5"></h2>
+            <p id="infoDetalhe" class="text-secondary"></p>
+            <h3 class="h6 mt-3">Visitas e motivos de pulo</h3>
+            <div class="table-responsive"><table id="tabelaVisitas" class="table table-sm"></table></div>
+            <h3 class="h6 mt-3">Proposta de corte</h3>
+            <p class="small text-secondary">Quantidade sugerida por rateio proporcional. Altere as quantidades antes de confirmar. Valores abaixo sao uma previa; a API valida novamente no momento da confirmacao.</p>
+            <div class="table-responsive"><table id="tabelaItens" class="table table-sm align-middle"></table></div>
+            <div id="resumoFinanceiro" class="alert alert-light border"></div>
+            <div id="areaContas" class="d-none">
+                <h3 class="h6 mt-3">Parcelas definitivas</h3>
+                <div class="table-responsive"><table id="tabelaContas" class="table table-sm"></table></div>
+            </div>
+            <div id="acoesDetalhe" class="d-flex gap-2 flex-wrap"></div>
+        </div>
+    </div>
+</section>
+
+<section id="secaoVendas" class="d-none">
+    <h2 class="h5">Vendas confirmadas</h2>
+    <div class="table-responsive"><table id="tabelaVendas" class="table table-striped table-sm"></table></div>
+</section>
+
+@section Scripts {
+<script>
+const csrf = document.querySelector('input[name="__RequestVerificationToken"]').value;
+const moeda = new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' });
+const campo = (obj,nome) => obj?.[nome] ?? obj?.[nome.charAt(0).toLowerCase()+nome.slice(1)];
+const inteiro = valor => Number(valor ?? 0);
+const data = valor => valor ? new Date(valor).toLocaleString('pt-BR') : '';
+let loteAtual = null;
+let entradasCorte = new Map();
+
+function avisar(mensagem, erro=false) {
+    const caixa = document.getElementById('aviso');
+    caixa.className = 'alert ' + (erro ? 'alert-danger' : 'alert-success');
+    caixa.textContent = mensagem;
+}
+async function requisitar(url, metodo='GET', dados=null) {
+    const opcoes = { method:metodo, headers:{} };
+    if (metodo !== 'GET') {
+        opcoes.headers['RequestVerificationToken'] = csrf;
+        opcoes.headers['Content-Type'] = 'application/json';
+        opcoes.body = JSON.stringify(dados);
+    }
+    const resposta = await fetch(url, opcoes);
+    if (resposta.status === 401) {
+        location.href='/Conta/Login';
+        throw Error('Sessao expirada.');
+    }
+    const texto = await resposta.text();
+    let conteudo = null;
+    try { conteudo = texto ? JSON.parse(texto) : null; } catch { }
+    if (!resposta.ok)
+        throw Error(conteudo?.mensagem || conteudo?.title || 'HTTP ' + resposta.status);
+    return conteudo;
+}
+function criarTabela(id,cabecalhos) {
+    const tabela=document.getElementById(id);
+    tabela.replaceChildren();
+    const thead=document.createElement('thead');
+    const tr=document.createElement('tr');
+    cabecalhos.forEach(t => {
+        const th=document.createElement('th'); th.textContent=t; tr.appendChild(th);
+    });
+    thead.appendChild(tr); tabela.appendChild(thead);
+    const tbody=document.createElement('tbody'); tabela.appendChild(tbody);
+    return tbody;
+}
+function celula(tr,valor) {
+    const td=document.createElement('td');
+    td.textContent = valor == null ? '' : String(valor);
+    tr.appendChild(td);
+    return td;
+}
+function botao(tr,texto,classe,acao) {
+    const td=document.createElement('td');
+    const b=document.createElement('button');
+    b.type='button'; b.className=classe; b.textContent=texto; b.onclick=acao;
+    td.appendChild(b); tr.appendChild(td);
+}
+async function carregarVendedores() {
+    const vendedores=await requisitar('/Admin/Dados?tipo=vendedores');
+    const select=document.getElementById('vendedor');
+    for (const v of vendedores) {
+        const opt=document.createElement('option');
+        opt.value=campo(v,'Id');
+        opt.textContent=campo(v,'Nome');
+        select.appendChild(opt);
+    }
+}
+async function carregarLotes() {
+    const filtros=new URLSearchParams();
+    for (const id of ['situacao','vendedor','inicio','fim']) {
+        const valor=document.getElementById(id).value;
+        if (valor) filtros.set(id === 'vendedor' ? 'vendedorId' : id,valor);
+    }
+    const lista=await requisitar('/PedidosGerais/Listar?'+filtros);
+    const tbody=criarTabela('tabelaLotes',
+        ['Lote','Vendedor','Data envio','Situacao','Pedidos','Total previsto','Total vendido','Acoes']);
+    for (const lote of lista) {
+        const tr=document.createElement('tr');
+        celula(tr,campo(lote,'Id'));
+        celula(tr,campo(lote,'Vendedor'));
+        celula(tr,data(campo(lote,'DataEnvio')));
+        celula(tr,campo(lote,'Situacao'));
+        celula(tr,campo(lote,'QuantidadePedidos'));
+        celula(tr,moeda.format(inteiro(campo(lote,'TotalPrevisto'))));
+        celula(tr,moeda.format(inteiro(campo(lote,'TotalConfirmado'))));
+        botao(tr,'Abrir','btn btn-sm btn-outline-primary',
+            () => executar(() => abrirLote(inteiro(campo(lote,'Id')))));
+        tbody.appendChild(tr);
+    }
+    if (!lista.length) {
+        const tr=document.createElement('tr');
+        const td=celula(tr,'Nenhum lote encontrado.'); td.colSpan=8; tbody.appendChild(tr);
+    }
+}
+function situacaoVisita(visita) {
+    if (campo(visita,'Situacao') !== 'Pulado') return 'Pedido registrado';
+    const motivos = {
+        NaoFaraPedido:'Nao fara pedido',
+        LocalFechado:'Local fechado',
+        Indisponivel:'Indisponivel',
+        Outro:'Outro'
+    };
+    const motivo=campo(visita,'MotivoPulo');
+    return 'Pulado: '+(motivos[motivo] || motivo || '')+
+        (campo(visita,'Observacao') ? ' - '+campo(visita,'Observacao') : '');
+}
+async function abrirLote(id) {
+    loteAtual=await requisitar('/PedidosGerais/Detalhes?id='+id);
+    entradasCorte=new Map();
+    const lote=loteAtual.lote;
+    const recebida=campo(lote,'Situacao')==='Recebido';
+    document.getElementById('tituloDetalhe').textContent=
+        'Lote #'+campo(lote,'Id')+' - '+campo(lote,'Situacao');
+    document.getElementById('infoDetalhe').textContent=
+        'Vendedor: '+campo(lote,'Vendedor')+' | Enviado: '+data(campo(lote,'DataEnvio'))+
+        (campo(lote,'MotivoCancelamento') ? ' | Motivo: '+campo(lote,'MotivoCancelamento') : '');
+    const tbodyVisitas=criarTabela('tabelaVisitas',['Ordem','Codigo','Cliente','Resultado']);
+    for (const visita of loteAtual.visitas) {
+        const tr=document.createElement('tr');
+        celula(tr,campo(visita,'OrdemSnapshot'));
+        celula(tr,campo(visita,'CodigoVisitaSnapshot'));
+        celula(tr,campo(visita,'Cliente'));
+        celula(tr,situacaoVisita(visita));
+        tbodyVisitas.appendChild(tr);
+    }
+    const tbodyItens=criarTabela('tabelaItens',
+        ['Pedido','Cliente','Produto','Preco','Solicitada','Disponivel','Corte sugerido/atendido']);
+    for (const item of loteAtual.itens) {
+        const tr=document.createElement('tr');
+        celula(tr,'#'+campo(item,'PedidoId'));
+        celula(tr,campo(item,'Cliente'));
+        const tdNome=celula(tr,campo(item,'Produto'));
+        if (campo(item,'ProdutoVencido')) tdNome.append(' (VENCIDO)');
+        if (campo(item,'Ativo')===false || campo(item,'Ativo')===0)
+            tdNome.append(' (INATIVO)');
+        celula(tr,moeda.format(inteiro(campo(item,'PrecoUnitarioSnapshot'))));
+        celula(tr,campo(item,'QuantidadeSolicitada'));
+        celula(tr,campo(item,'DisponivelProduto'));
+        const td=document.createElement('td');
+        if (recebida) {
+            const input=document.createElement('input');
+            input.type='number'; input.className='form-control form-control-sm';
+            input.style.maxWidth='110px'; input.min='0'; input.step='1';
+            input.max=campo(item,'QuantidadeSolicitada');
+            input.value=campo(item,'QuantidadeSugerida');
+            input.setAttribute('aria-label','Quantidade atendida do item '+campo(item,'Id'));
+            input.oninput=recalcular;
+            td.appendChild(input);
+            entradasCorte.set(inteiro(campo(item,'Id')),input);
+        } else {
+            td.textContent=campo(item,'QuantidadeAtendida') ?? 'Sem corte';
+        }
+        tr.appendChild(td); tbodyItens.appendChild(tr);
+    }
+    const acoes=document.getElementById('acoesDetalhe'); acoes.replaceChildren();
+    const areaContas=document.getElementById('areaContas');
+    areaContas.classList.toggle('d-none',!loteAtual.contas?.length);
+    if (loteAtual.contas?.length) {
+        const tbody=criarTabela('tabelaContas',
+            ['Pedido','Parcela','Forma','Vencimento','Valor base','Situacao']);
+        for (const conta of loteAtual.contas) {
+            const tr=document.createElement('tr');
+            celula(tr,'#'+campo(conta,'PedidoId'));
+            celula(tr,campo(conta,'NumeroParcela'));
+            celula(tr,campo(conta,'FormaPagamento'));
+            const vencimento=campo(conta,'Vencimento');
+            celula(tr,vencimento ? String(vencimento).slice(0,10).split('-').reverse().join('/') : '');
+            celula(tr,moeda.format(inteiro(campo(conta,'ValorBase'))));
+            celula(tr,campo(conta,'Situacao'));
+            tbody.appendChild(tr);
+        }
+    }
+    if (recebida) {
+        const confirmar=document.createElement('button');
+        confirmar.className='btn btn-success'; confirmar.type='button';
+        confirmar.textContent='Confirmar corte e gerar vendas';
+        confirmar.onclick=() => executar(confirmarLote);
+        acoes.appendChild(confirmar);
+        const cancelar=document.createElement('button');
+        cancelar.className='btn btn-outline-danger'; cancelar.type='button';
+        cancelar.textContent='Cancelar lote';
+        cancelar.onclick=() => executar(cancelarLote);
+        acoes.appendChild(cancelar);
+    }
+    const fechar=document.createElement('button');
+    fechar.type='button'; fechar.className='btn btn-outline-secondary';
+    fechar.textContent='Fechar detalhes';
+    fechar.onclick=() => document.getElementById('detalhe').classList.add('d-none');
+    acoes.appendChild(fechar);
+    document.getElementById('detalhe').classList.remove('d-none');
+    recalcular();
+    document.getElementById('detalhe').scrollIntoView({behavior:'smooth'});
+}
+function cortes() {
+    return Array.from(entradasCorte, ([itemPedidoId,input]) => ({
+        itemPedidoId, quantidadeAtendida:Number(input.value)
+    }));
+}
+function recalcular() {
+    if (!loteAtual) return;
+    const div=document.getElementById('resumoFinanceiro'); div.replaceChildren();
+    let totalGeral=0;
+    const corte=new Map(cortes().map(i=>[i.itemPedidoId,i.quantidadeAtendida]));
+    for (const pedido of loteAtual.pedidos) {
+        const id=inteiro(campo(pedido,'Id'));
+        const itens=loteAtual.itens.filter(x=>inteiro(campo(x,'PedidoId'))===id);
+        let brutoCentavos=0;
+        let quantidade=0;
+        for (const item of itens) {
+            const q=corte.has(inteiro(campo(item,'Id')))
+                ? corte.get(inteiro(campo(item,'Id')))
+                : inteiro(campo(item,'QuantidadeAtendida'));
+            if (!Number.isInteger(q) || q<0 || q>inteiro(campo(item,'QuantidadeSolicitada'))) {
+                div.textContent='Correcao necessaria: quantidades devem ser inteiras, entre zero e o solicitado.';
+                return;
+            }
+            quantidade+=q;
+            brutoCentavos+=Math.round(inteiro(campo(item,'PrecoUnitarioSnapshot'))*100)*q;
+        }
+        if (!quantidade) continue;
+        const desconto=inteiro(campo(pedido,'DescontoAVista'));
+        const finalCentavos=Math.round(brutoCentavos*(1-desconto));
+        totalGeral+=finalCentavos;
+        const numeroParcelas=inteiro(campo(pedido,'QuantidadeParcelas'));
+        const base=Math.floor(finalCentavos/numeroParcelas);
+        const valores=Array.from({length:numeroParcelas},(_,i)=>
+            (i===numeroParcelas-1 ? finalCentavos-base*(numeroParcelas-1) : base)/100);
+        const p=document.createElement('p'); p.className='mb-1';
+        p.textContent='Pedido #'+id+' - '+campo(pedido,'Cliente')+' | '+
+            campo(pedido,'Condicao')+' | Final: '+moeda.format(finalCentavos/100)+
+            ' | Parcelas: '+valores.map(v=>moeda.format(v)).join(' + ');
+        div.appendChild(p);
+    }
+    const total=document.createElement('strong');
+    total.textContent='Total previsto apos cortes: '+moeda.format(totalGeral/100);
+    div.appendChild(total);
+}
+async function confirmarLote() {
+    if (!loteAtual) return;
+    const itens=cortes();
+    const invalidos=itens.some(i=>!Number.isInteger(i.quantidadeAtendida) ||
+        i.quantidadeAtendida<0 ||
+        i.quantidadeAtendida>inteiro(campo(
+            loteAtual.itens.find(x=>inteiro(campo(x,'Id'))===i.itemPedidoId),'QuantidadeSolicitada')));
+    if (invalidos) throw Error('Verifique as quantidades atendidas.');
+    if (!confirm('Confirmar este lote? A operacao gera vendas, parcelas e baixa estoque.'))
+        return;
+    const id=inteiro(campo(loteAtual.lote,'Id'));
+    const resposta=await requisitar('/PedidosGerais/Confirmar?id='+id,'POST',{itens});
+    document.getElementById('detalhe').classList.add('d-none');
+    await carregarLotes();
+    avisar(resposta.mensagem);
+}
+async function cancelarLote() {
+    if (!loteAtual) return;
+    const motivo=prompt('Motivo obrigatorio para cancelar o lote:');
+    if (motivo===null) return;
+    if (!motivo.trim() || motivo.trim().length>500)
+        throw Error('Informe motivo com ate 500 caracteres.');
+    const id=inteiro(campo(loteAtual.lote,'Id'));
+    const resposta=await requisitar('/PedidosGerais/Cancelar?id='+id,
+        'POST',{motivo:motivo.trim()});
+    document.getElementById('detalhe').classList.add('d-none');
+    await carregarLotes();
+    avisar(resposta.mensagem);
+}
+async function carregarVendas() {
+    const vendas=await requisitar('/PedidosGerais/Vendas');
+    const tbody=criarTabela('tabelaVendas',
+        ['Venda','Lote','Cliente','Vendedor','Situacao','Atendidas/solicitadas','Cortadas','Valor final','Confirmada em']);
+    for (const v of vendas) {
+        const tr=document.createElement('tr');
+        celula(tr,campo(v,'Id'));
+        celula(tr,campo(v,'PedidoGeralId'));
+        celula(tr,campo(v,'Cliente'));
+        celula(tr,campo(v,'Vendedor'));
+        celula(tr,campo(v,'Situacao'));
+        const solicitadas=inteiro(campo(v,'UnidadesSolicitadas'));
+        const atendidas=inteiro(campo(v,'UnidadesAtendidas'));
+        celula(tr,atendidas+' / '+solicitadas);
+        celula(tr,solicitadas-atendidas);
+        celula(tr,moeda.format(inteiro(campo(v,'TotalFinal'))));
+        celula(tr,data(campo(v,'DataConfirmacao')));
+        tbody.appendChild(tr);
+    }
+    if (!vendas.length) {
+        const tr=document.createElement('tr');
+        const td=celula(tr,'Nenhuma venda confirmada.'); td.colSpan=9; tbody.appendChild(tr);
+    }
+}
+function alternar(mostrarVendas) {
+    document.getElementById('secaoLotes').classList.toggle('d-none',mostrarVendas);
+    document.getElementById('secaoVendas').classList.toggle('d-none',!mostrarVendas);
+}
+async function executar(funcao) {
+    try { await funcao(); }
+    catch (e) { avisar(e.message || 'Erro inesperado.',true); }
+}
+document.getElementById('filtrar').onclick=() => executar(carregarLotes);
+document.getElementById('mostrarLotes').onclick=() => { alternar(false); executar(carregarLotes); };
+document.getElementById('mostrarVendas').onclick=() => { alternar(true); executar(carregarVendas); };
+executar(async () => { await carregarVendedores(); await carregarLotes(); });
+</script>
+}

@@ -25,6 +25,10 @@ public partial class MainPage : ContentPage
     {
         InitializeComponent();
         BindingContext = this;
+        MontarPainelResultados();
+        MontarCadastroClientes();
+        MontarHistoricoCliente();
+        MelhorarSeletores();
         Loaded += InicializarAoCarregar;
     }
 
@@ -93,9 +97,11 @@ public partial class MainPage : ContentPage
     {
         _dadosLocais = new DadosLocais(vendedorId);
         await _dadosLocais.InicializarAsync();
+        await _dadosLocais.InicializarResultadosAsync();
         AreaLogin.IsVisible = false;
         AreaDados.IsVisible = true;
         UsuarioLogado.Text = $"Vendedor: {_nome}";
+        await ExibirResultadosCacheAsync();
         await ExibirCacheAsync();
         await AtualizarCatalogosPedidoAsync();
         await AtualizarListaCiclosAsync();
@@ -132,6 +138,10 @@ public partial class MainPage : ContentPage
             await AtualizarCatalogosPedidoAsync();
             await AtualizarListaCiclosAsync();
             if (_cicloAtualId != null) await ExibirCicloAsync();
+            await TentarSincronizarResultadosAsync();
+            if (_clienteHistoricoId.HasValue)
+                await AtualizarHistoricoClienteAsync(_clienteHistoricoId);
+            await CarregarCidadesCadastroAsync();
             MensagemSincronizacao.Text = "Sincronizacao concluida. Dados atualizados no SQLite.";
         }
         catch (SessaoExpiradaException)
@@ -166,6 +176,9 @@ public partial class MainPage : ContentPage
         _cicloAtualId = null;
         _visitaEdicaoId = null;
         _carrinho.Clear();
+        LimparPainelResultados();
+        LimparHistoricoCliente();
+        LimparCadastroClientes();
         ListaCiclos.Children.Clear();
         AreaCiclo.IsVisible = false;
         AreaDados.IsVisible = false;
